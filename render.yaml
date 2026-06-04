@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: projeto-jynx
+    env: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: true
