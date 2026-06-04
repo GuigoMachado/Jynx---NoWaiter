@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <title>Painel de Pedidos - Comanda</title>
+  </head>
+  <body>
+    <div class="container admin-container">
+      <div class="top">
+        <h2>Painel de Pedidos</h2>
+        <p class="valor">Visualize pedidos públicos e gere QR codes por mesa.</p>
+      </div>
+
+      <div class="admin-section">
+        <section class="admin-panel">
+          <h3>QR Codes por Mesa</h3>
+          <p>Escaneie o QR code para abrir o app já conectado à mesa correta.</p>
+          <div class="qr-grid" id="qrGrid"></div>
+        </section>
+
+        <section class="admin-panel">
+          <div class="admin-header-row">
+            <div>
+              <h3>Pedidos registrados</h3>
+              <p>Lista atualizada de pedidos enviados por todas as mesas.</p>
+            </div>
+            <button id="refreshOrders" class="botaoMenuGarcon">Atualizar</button>
+          </div>
+          <div class="order-summary">
+            <span id="totalOrdersCount">0 pedidos</span>
+            <strong id="grandTotalValue">Total: R$ 0,00</strong>
+          </div>
+          <div class="table-wrapper">
+            <table class="order-table">
+              <thead>
+                <tr>
+                  <th>Mesa</th>
+                  <th>Item</th>
+                  <th>Qtd</th>
+                  <th>Preço</th>
+                  <th>Total</th>
+                  <th>Obs</th>
+                  <th>Hora</th>
+                </tr>
+              </thead>
+              <tbody id="ordersTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="admin.js"></script>
+  </body>
+</html>

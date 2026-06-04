@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <title>Document</title>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="top">
+        <h2 class="mesa">Mesa-1</h2>
+        <p class="valor">Total: R$XXX,XX</p>
+      </div>
+
+      <div class="menu">
+        <button class="botaoMenuCardapio">Cardápio</button>
+        <div class="esconderCardapio">
+          <div class="cardapio">
+            <button class="categoriaPratos">Entradas</button>
+            <button class="categoriaPratos">Pratos Principais</button>
+            <button class="categoriaPratos">Carnes</button>
+            <button class="categoriaPratos">Saladas</button>
+            <button class="categoriaPratos">Porções</button>
+            <button class="categoriaPratos">Alcoólicos</button>
+            <button class="categoriaPratos">Bebidas</button>
+          </div>
+        </div>
+        <button class="botaoMenuComanda">Comanda</button>
+      </div>
+
+      <div class="bottom">
+        <button class="botaoMenuGarcon">Chamar Garçon</button>
+      </div>
+    </div>
+
+    <div class="modal" id="itemModal" aria-hidden="true">
+      <div class="modal-box">
+        <button type="button" class="modal-close" aria-label="Fechar">×</button>
+        <h3 class="modal-title">Categoria</h3>
+        <div class="cards-wrapper">
+          <div class="item-list"></div>
+        </div>
+        <div class="modal-order-summary" style="border-top: 2px solid #E8E8E8; padding-top: 16px; margin-top: 16px; display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 1.2rem; font-weight: 700; color: #2C2C2C;">Total do Pedido:</span>
+            <span class="modal-order-total" style="font-size: 1.4rem; font-weight: 700; color: #C41E3A;">R$ 0,00</span>
+          </div>
+          <button type="button" class="modal-confirm-btn" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #C41E3A 0%, #E85A4F 100%); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">Confirmar Pedido</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="cartModal" aria-hidden="true">
+      <div class="modal-box">
+        <button type="button" class="modal-close" aria-label="Fechar">×</button>
+        <h3 class="modal-title">Comanda da Mesa</h3>
+        <div class="cards-wrapper">
+          <div class="cart-list"></div>
+        </div>
+        <div class="cart-total-summary">
+          <span>Total da Comanda:</span>
+          <strong class="cart-total-value">R$ 0,00</strong>
+        </div>
+      </div>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
