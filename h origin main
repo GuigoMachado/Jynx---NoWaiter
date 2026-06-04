@@ -1,0 +1,26 @@
+[33mcommit e3b1bd12a8d689726f9a0f194c3c76e3eebf6f53[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Guilherme Machado <guilherme-aom@outlook.com>
+Date:   Thu Jun 4 18:51:56 2026 -0300
+
+    Save changes and add render.yaml
+
+README.md
+admin.html
+admin.js
+dev.js
+generate-qr-codes.js
+generate_qr_images.py
+package.json
+qr/table-1.jpg
+qr/table-10.jpg
+qr/table-2.jpg
+qr/table-3.jpg
+qr/table-4.jpg
+qr/table-5.jpg
+qr/table-6.jpg
+qr/table-7.jpg
+qr/table-8.jpg
+qr/table-9.jpg
+script.js
+server.js
+style.css
