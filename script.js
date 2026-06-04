@@ -320,6 +320,30 @@ menuButton.addEventListener('click', () => {
 
 comandaButton.addEventListener('click', openCartModal);
 
+// Bind waiter (chamar garçon) button to call waiter API
+const waiterButton = document.querySelector('.botaoMenuGarcon');
+const callWaiter = async () => {
+  try {
+    const tableNumber = getTableNumber();
+    const resp = await fetch('/api/call-waiter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table_number: tableNumber }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || data.detail || `Status ${resp.status}`);
+    alert('Garçon chamado com sucesso!');
+  } catch (err) {
+    console.error('Failed to call waiter:', err);
+    alert('Falha ao chamar o garçon. Tente novamente.');
+  }
+};
+
+if (waiterButton) {
+  waiterButton.addEventListener('click', callWaiter);
+}
+
 const closeItemModal = () => {
   modal.classList.remove('modal-open');
   modal.setAttribute('aria-hidden', 'true');

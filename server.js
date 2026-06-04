@@ -68,12 +68,27 @@ const getOrderIdForInsert = async () => {
 if (pool) {
   pool
     .query('SELECT 1')
-    .then(() => {
+    .then(async () => {
       console.log('Database connection OK');
-      return pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS table_number INTEGER DEFAULT 1");
+      try {
+        await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS table_number INTEGER DEFAULT 1");
+      await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+      await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_status VARCHAR(32) NOT NULL DEFAULT 'pending'");
+      // create waiter calls table to track waiter requests
+      await pool.query(`CREATE TABLE IF NOT EXISTS wait_calls (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        table_number INTEGER NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'waiting',
+        call_type VARCHAR(32) NOT NULL DEFAULT 'table',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`);
+      await pool.query("ALTER TABLE wait_calls ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'waiting'");
+      await pool.query("ALTER TABLE wait_calls ADD COLUMN IF NOT EXISTS call_type VARCHAR(32) NOT NULL DEFAULT 'table'");
+      console.log('Orders and wait_calls schema checked/updated');
+      } catch (e) {
+        console.error('Schema migration warning:', e.message);
+      }
     })
-    .then(() => pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-    .then(() => console.log('Orders table schema checked/updated'))
     .catch((err) => console.error('Database connection failed:', err.message));
 }
 
@@ -172,6 +187,152 @@ app.post('/api/orders', async (req, res) => {
   } catch (error) {
     console.error('Error saving order:', error);
     return res.status(500).json({ error: 'Failed to save order', detail: error.message });
+  }
+});
+
+const deleteOrdersByTable = async (tableNumber, res) => {
+  try {
+    const result = await pool.query('DELETE FROM orders WHERE table_number = $1', [tableNumber]);
+    return res.json({ deleted: result.rowCount });
+  } catch (error) {
+    console.error('Error clearing orders:', error);
+    return res.status(500).json({ error: 'Failed to clear orders', detail: error.message });
+  }
+};
+
+app.delete('/api/orders', async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({ error: 'Database connection not configured' });
+  }
+
+  const rawTableNumber = req.query.table_number;
+  const tableNumber = parseInt(rawTableNumber, 10);
+  if (!Number.isInteger(tableNumber) || tableNumber <= 0) {
+    return res.status(400).json({ error: 'table_number must be a positive integer' });
+  }
+
+  return deleteOrdersByTable(tableNumber, res);
+});
+
+app.delete('/api/orders/:table_number', async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({ error: 'Database connection not configured' });
+  }
+
+  const tableNumber = parseInt(req.params.table_number, 10);
+  if (!Number.isInteger(tableNumber) || tableNumber <= 0) {
+    return res.status(400).json({ error: 'table_number must be a positive integer' });
+  }
+
+  return deleteOrdersByTable(tableNumber, res);
+});
+
+app.patch('/api/orders/:id/done', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  const { id } = req.params;
+
+  try {
+    const orderResult = await pool.query(
+      `UPDATE orders SET order_status = 'done' WHERE id = $1 RETURNING id, item_id, quantity, notes, price_each, total_price, table_number, order_status, created_at`,
+      [id]
+    );
+
+    if (orderResult.rowCount === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+    await pool.query(
+      `INSERT INTO wait_calls (table_number, call_type) VALUES ($1, 'kitchen')`,
+      [order.table_number]
+    );
+
+    return res.json(order);
+  } catch (error) {
+    console.error('Error marking order done:', error);
+    return res.status(500).json({ error: 'Failed to mark order done', detail: error.message });
+  }
+});
+
+// Waiter call endpoints: record and list waiter calls
+app.post('/api/call-waiter', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  const { table_number, call_type } = req.body;
+  const tableNum = parseInt(table_number, 10);
+  if (!Number.isInteger(tableNum) || tableNum <= 0) return res.status(400).json({ error: 'table_number must be a positive integer' });
+  const normalizedCallType = call_type === 'kitchen' ? 'kitchen' : 'table';
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO wait_calls (table_number, call_type) VALUES ($1, $2) RETURNING id, table_number, status, call_type, created_at`,
+      [tableNum, normalizedCallType]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error inserting wait call:', err);
+    return res.status(500).json({ error: 'Failed to record waiter call', detail: err.message });
+  }
+});
+
+app.patch('/api/call-waiter/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  const { id } = req.params;
+  const { status } = req.body;
+  const normalizedStatus = status === 'attended' ? 'attended' : 'waiting';
+
+  try {
+    const result = await pool.query(
+      'UPDATE wait_calls SET status = $1 WHERE id = $2 RETURNING id, table_number, status, call_type, created_at',
+      [normalizedStatus, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Wait call not found' });
+    }
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating wait call status:', err);
+    return res.status(500).json({ error: 'Failed to update waiter call status', detail: err.message });
+  }
+});
+
+app.delete('/api/call-waiter/attended', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  try {
+    const result = await pool.query("DELETE FROM wait_calls WHERE status = 'attended'");
+    return res.json({ deleted: result.rowCount });
+  } catch (err) {
+    console.error('Error deleting attended wait calls:', err);
+    return res.status(500).json({ error: 'Failed to clear attended waiter calls', detail: err.message });
+  }
+});
+
+app.get('/api/kitchen-orders', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  try {
+    const result = await pool.query(
+      `SELECT o.id, o.item_id, m.name AS item_name, o.quantity, o.notes,
+              o.price_each::float AS price_each, o.total_price::float AS total_price,
+              o.table_number, o.order_status, o.created_at
+       FROM orders o
+       LEFT JOIN menu_items m ON m.id = o.item_id
+       WHERE o.order_status <> 'done'
+       ORDER BY o.created_at ASC`
+    );
+    return res.json(result.rows);
+  } catch (err) {
+    console.error('Error loading kitchen orders:', err);
+    return res.status(500).json({ error: 'Failed to load kitchen orders', detail: err.message });
+  }
+});
+
+app.get('/api/call-waiter', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  try {
+    const result = await pool.query('SELECT id, table_number, status, call_type, created_at FROM wait_calls ORDER BY created_at ASC');
+    return res.json(result.rows);
+  } catch (err) {
+    console.error('Error loading wait calls:', err);
+    return res.status(500).json({ error: 'Failed to load wait calls', detail: err.message });
   }
 });
 

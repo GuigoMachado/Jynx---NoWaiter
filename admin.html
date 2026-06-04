@@ -10,48 +10,101 @@
     <div class="container admin-container">
       <div class="top">
         <h2>Painel de Pedidos</h2>
-        <p class="valor">Visualize pedidos públicos e gere QR codes por mesa.</p>
+        <p class="valor">Visualize pedidos por mesa e acompanhe chamadas de garçom.</p>
       </div>
 
       <div class="admin-section">
         <section class="admin-panel">
-          <h3>QR Codes por Mesa</h3>
-          <p>Escaneie o QR code para abrir o app já conectado à mesa correta.</p>
-          <div class="qr-grid" id="qrGrid"></div>
+          <div class="admin-header-row">
+            <div>
+              <h3>Mesas</h3>
+              <p>Clique em uma mesa para visualizar seus pedidos.</p>
+            </div>
+            <div class="admin-header-actions">
+            <button id="refreshTables" class="botaoMenuGarcon">Atualizar</button>
+            <button id="openKitchenBtn" class="botaoMenuCardapio" type="button">Tela da Cozinha</button>
+          </div>
+          </div>
+          <div class="tables-grid" id="tablesGrid"></div>
         </section>
 
         <section class="admin-panel">
           <div class="admin-header-row">
             <div>
-              <h3>Pedidos registrados</h3>
-              <p>Lista atualizada de pedidos enviados por todas as mesas.</p>
+              <h3>Resumo Geral</h3>
+              <p>Total de pedidos e valores de todas as mesas.</p>
             </div>
-            <button id="refreshOrders" class="botaoMenuGarcon">Atualizar</button>
           </div>
           <div class="order-summary">
             <span id="totalOrdersCount">0 pedidos</span>
             <strong id="grandTotalValue">Total: R$ 0,00</strong>
           </div>
-          <div class="table-wrapper">
-            <table class="order-table">
-              <thead>
-                <tr>
-                  <th>Mesa</th>
-                  <th>Item</th>
-                  <th>Qtd</th>
-                  <th>Preço</th>
-                  <th>Total</th>
-                  <th>Obs</th>
-                  <th>Hora</th>
-                </tr>
-              </thead>
-              <tbody id="ordersTableBody"></tbody>
-            </table>
-          </div>
         </section>
+      </div>
+
+      <footer class="admin-footer">
+        <div class="admin-footer-header">
+          <h4>Chamadas de Garçom</h4>
+          <button id="clearAttendedCallsBtn" class="botaoMenuCardapio" type="button">Limpar Atendidos</button>
+        </div>
+        <div class="garcon-calls-list" id="garconCallsList"></div>
+      </footer>
+    </div>
+
+    <!-- Table orders modal -->
+    <div class="modal" id="tableOrdersModal" aria-hidden="true">
+      <div class="modal-box">
+        <button type="button" class="modal-close" aria-label="Fechar">×</button>
+        <div class="modal-title-row">
+          <h3 class="modal-title" id="tableOrdersTitle">Pedidos da Mesa 1</h3>
+          <button id="clearTableBtn" class="botaoMenuGarcon" type="button">Limpar Mesa</button>
+        </div>
+        <div class="cards-wrapper">
+          <table class="order-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qtd</th>
+                <th>Preço</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="tableOrdersBody"></tbody>
+          </table>
+        </div>
+        <div class="modal-order-summary">
+          <strong id="tableOrdersTotal">Total: R$ 0,00</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kitchen screen modal -->
+    <div class="modal" id="kitchenModal" aria-hidden="true">
+      <div class="modal-box kitchen-modal-box">
+        <button type="button" class="modal-close" aria-label="Fechar">×</button>
+        <div class="modal-title-row">
+          <h3 class="modal-title">Tela da Cozinha</h3>
+        </div>
+        <div class="cards-wrapper">
+          <table class="order-table kitchen-table">
+            <thead>
+              <tr>
+                <th>Mesa</th>
+                <th>Item</th>
+                <th>Qtd</th>
+                <th>Notas</th>
+                <th>Status</th>
+                <th>Pedido</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody id="kitchenOrdersBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <script src="admin.js"></script>
   </body>
 </html>
+

@@ -18,6 +18,12 @@ npm install
 npm start
 ```
 
+Or start the development watcher, which restarts the server automatically when files change:
+
+```bash
+npm run dev
+```
+
 5. Open `http://localhost:3000`
 
 ## Public deployment
@@ -46,6 +52,24 @@ Each QR code opens the app already configured for that table.
 An admin dashboard is available at `admin.html`:
 
 - `http://localhost:3000/admin.html`
+
+## Generating QR code images (optional)
+
+If you want JPG files for each table stored in the project, run the included script which downloads QR images into a `qr/` folder.
+
+1. Install `requests` (Python 3):
+
+```bash
+pip install requests
+```
+
+2. Run the generator (make sure your app is reachable at the `BASE_URL` in the script or edit it):
+
+```bash
+python generate_qr_images.py
+```
+
+This will create `qr/table-1.jpg` ... `qr/table-10.jpg`.
 
 This dashboard shows all orders from the database and generates QR codes for tables.
 
