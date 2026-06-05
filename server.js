@@ -74,6 +74,29 @@ if (pool) {
         await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS table_number INTEGER DEFAULT 1");
       await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
       await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_status VARCHAR(32) NOT NULL DEFAULT 'pending'");
+      await pool.query(`CREATE TABLE IF NOT EXISTS order_history (
+        id BIGSERIAL PRIMARY KEY,
+        order_id TEXT,
+        item_id TEXT,
+        item_name TEXT,
+        quantity INTEGER NOT NULL,
+        notes TEXT,
+        price_each NUMERIC(12,2) NOT NULL,
+        total_price NUMERIC(12,2) NOT NULL,
+        table_number INTEGER NOT NULL,
+        order_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS order_id TEXT");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS item_id TEXT");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS item_name TEXT");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS notes TEXT");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS price_each NUMERIC(12,2) NOT NULL DEFAULT 0");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS total_price NUMERIC(12,2) NOT NULL DEFAULT 0");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS table_number INTEGER NOT NULL DEFAULT 1");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS order_status VARCHAR(32) NOT NULL DEFAULT 'pending'");
+      await pool.query("ALTER TABLE order_history ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
       // create waiter calls table to track waiter requests
       await pool.query(`CREATE TABLE IF NOT EXISTS wait_calls (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -84,7 +107,7 @@ if (pool) {
       )`);
       await pool.query("ALTER TABLE wait_calls ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'waiting'");
       await pool.query("ALTER TABLE wait_calls ADD COLUMN IF NOT EXISTS call_type VARCHAR(32) NOT NULL DEFAULT 'table'");
-      console.log('Orders and wait_calls schema checked/updated');
+      console.log('Orders, order_history and wait_calls schema checked/updated');
       } catch (e) {
         console.error('Schema migration warning:', e.message);
       }
@@ -152,6 +175,28 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
+app.get('/api/order-history', async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({ error: 'Database connection not configured' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, order_id, item_id, item_name, quantity, notes,
+              price_each::float AS price_each, total_price::float AS total_price,
+              table_number, order_status, created_at
+       FROM order_history
+       WHERE order_status = 'closed'
+       ORDER BY created_at ASC, id ASC`
+    );
+
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error loading order history:', error);
+    return res.status(500).json({ error: 'Failed to load order history', detail: error.message });
+  }
+});
+
 app.post('/api/orders', async (req, res) => {
   if (!pool) {
     return res.status(500).json({ error: 'Database connection not configured' });
@@ -164,6 +209,8 @@ app.post('/api/orders', async (req, res) => {
 
   try {
     const orderId = await getOrderIdForInsert();
+    const itemResult = await pool.query('SELECT name FROM menu_items WHERE id = $1 LIMIT 1', [itemId]);
+    const itemName = itemResult.rows[0]?.name || null;
     const columns = ['item_id', 'quantity', 'notes', 'price_each', 'total_price', 'table_number'];
     const values = [itemId, quantity, notes || '-', price, total, table_number || 1];
     let query = `
@@ -183,6 +230,7 @@ app.post('/api/orders', async (req, res) => {
     }
 
     const result = await pool.query(query, values);
+
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error saving order:', error);
@@ -214,6 +262,25 @@ app.delete('/api/orders', async (req, res) => {
   return deleteOrdersByTable(tableNumber, res);
 });
 
+// Delete individual order by ID (MUST come before :table_number route)
+app.delete('/api/orders/:id', async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({ error: 'Database connection not configured' });
+  }
+
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM orders WHERE id = $1 RETURNING id', [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    return res.json({ deleted: result.rows[0].id });
+  } catch (error) {
+    console.error('Error deleting order:', error);
+    return res.status(500).json({ error: 'Failed to delete order', detail: error.message });
+  }
+});
+
 app.delete('/api/orders/:table_number', async (req, res) => {
   if (!pool) {
     return res.status(500).json({ error: 'Database connection not configured' });
@@ -242,6 +309,12 @@ app.patch('/api/orders/:id/done', async (req, res) => {
     }
 
     const order = orderResult.rows[0];
+    await pool.query(
+      `UPDATE order_history
+       SET order_status = 'done'
+       WHERE order_id = $1 OR order_id = $2::text`,
+      [order.id, order.id]
+    );
     await pool.query(
       `INSERT INTO wait_calls (table_number, call_type) VALUES ($1, 'kitchen')`,
       [order.table_number]
@@ -303,6 +376,22 @@ app.delete('/api/call-waiter/attended', async (req, res) => {
   } catch (err) {
     console.error('Error deleting attended wait calls:', err);
     return res.status(500).json({ error: 'Failed to clear attended waiter calls', detail: err.message });
+  }
+});
+
+app.delete('/api/call-waiter/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database connection not configured' });
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM wait_calls WHERE id = $1 RETURNING id', [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Wait call not found' });
+    }
+    return res.json({ deleted: result.rows[0].id });
+  } catch (err) {
+    console.error('Error deleting wait call:', err);
+    return res.status(500).json({ error: 'Failed to delete waiter call', detail: err.message });
   }
 });
 
@@ -506,6 +595,53 @@ app.get('/api/item-image/:itemId/:itemName', (req, res) => {
   res.setHeader('Content-Type', 'image/svg+xml');
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.send(svg);
+});
+// Finalize all orders for a table (move to order_history with closed status)
+app.post('/api/orders/finalize/:table_number', async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({ error: 'Database connection not configured' });
+  }
+
+  const tableNumber = parseInt(req.params.table_number, 10);
+  if (!Number.isInteger(tableNumber) || tableNumber <= 0) {
+    return res.status(400).json({ error: 'table_number must be a positive integer' });
+  }
+
+  try {
+    const orders = await pool.query('SELECT * FROM orders WHERE table_number = $1', [tableNumber]);
+    
+    if (orders.rowCount === 0) {
+      return res.status(400).json({ error: 'No orders found for this table' });
+    }
+
+    for (const order of orders.rows) {
+      const itemResult = await pool.query('SELECT name FROM menu_items WHERE id = $1 LIMIT 1', [order.item_id]);
+      const itemName = itemResult.rows[0]?.name || order.item_id;
+
+      await pool.query(
+        `INSERT INTO order_history (
+          order_id, item_id, item_name, quantity, notes, price_each, total_price, table_number, order_status, created_at
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'closed', $9)`,
+        [
+          order.id?.toString?.() ?? String(order.id),
+          order.item_id?.toString?.() ?? String(order.item_id),
+          itemName,
+          order.quantity,
+          order.notes || '-',
+          order.price_each,
+          order.total_price,
+          order.table_number,
+          order.created_at || new Date(),
+        ]
+      );
+    }
+
+    return res.json({ finalized: orders.rowCount });
+  } catch (error) {
+    console.error('Error finalizing orders:', error);
+    return res.status(500).json({ error: 'Failed to finalize orders', detail: error.message });
+  }
 });
 
 

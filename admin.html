@@ -32,20 +32,20 @@
           <div class="admin-header-row">
             <div>
               <h3>Resumo Geral</h3>
-              <p>Total de pedidos e valores de todas as mesas.</p>
+              <p>Pedidos do dia agrupados por data e ordenados pelo horário de criação.</p>
             </div>
           </div>
           <div class="order-summary">
             <span id="totalOrdersCount">0 pedidos</span>
             <strong id="grandTotalValue">Total: R$ 0,00</strong>
           </div>
+          <div id="generalSummaryList" class="general-summary-list"></div>
         </section>
       </div>
 
       <footer class="admin-footer">
         <div class="admin-footer-header">
           <h4>Chamadas de Garçom</h4>
-          <button id="clearAttendedCallsBtn" class="botaoMenuCardapio" type="button">Limpar Atendidos</button>
         </div>
         <div class="garcon-calls-list" id="garconCallsList"></div>
       </footer>
@@ -57,7 +57,6 @@
         <button type="button" class="modal-close" aria-label="Fechar">×</button>
         <div class="modal-title-row">
           <h3 class="modal-title" id="tableOrdersTitle">Pedidos da Mesa 1</h3>
-          <button id="clearTableBtn" class="botaoMenuGarcon" type="button">Limpar Mesa</button>
         </div>
         <div class="cards-wrapper">
           <table class="order-table">
@@ -67,6 +66,7 @@
                 <th>Qtd</th>
                 <th>Preço</th>
                 <th>Total</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody id="tableOrdersBody"></tbody>
@@ -74,6 +74,10 @@
         </div>
         <div class="modal-order-summary">
           <strong id="tableOrdersTotal">Total: R$ 0,00</strong>
+        </div>
+        <div class="modal-button-group" style="display: flex; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 2px solid #E8E8E8;">
+          <button id="finalizeTableBtn" class="botaoMenuCardapio" type="button" style="flex: 1;">Fechar Comanda</button>
+          <button id="clearTableBtn" class="botaoMenuGarcon" type="button" style="flex: 1;">Limpar Comanda</button>
         </div>
       </div>
     </div>
