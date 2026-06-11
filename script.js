@@ -191,8 +191,6 @@ const confirmModalOrder = async () => {
     return;
   }
 
-  console.log('Confirming modal order with items:', items.length);
-  
   let allSuccessful = true;
   const confirmedOrders = [];
 
@@ -206,12 +204,8 @@ const confirmModalOrder = async () => {
       total: item.total,
     };
 
-    console.log('Sending order data:', orderData);
-    
     const result = await sendOrderData(orderData);
     if (result) {
-      console.log('Order saved successfully:', result);
-      // Add to confirmed orders list
       confirmedOrders.push({
         ...item,
         confirmedAt: new Date().toLocaleTimeString('pt-BR'),
@@ -351,8 +345,6 @@ const closeItemModal = () => {
 };
 
 const openCategoryModal = async (category) => {
-  console.log('openCategoryModal()', category);
-  
   // Clear current modal items when opening new category
   Object.keys(currentModalItems).forEach(key => delete currentModalItems[key]);
   
@@ -495,7 +487,6 @@ const openCategoryModal = async (category) => {
 
 categoryButtons.forEach((button) => {
   button.addEventListener('click', () => {
-    console.log('categoriaPratos clicked:', button.textContent.trim());
     openCategoryModal(button.textContent.trim());
   });
 });
@@ -507,7 +498,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const modalConfirmBtn = modal.querySelector('.modal-confirm-btn');
   if (modalConfirmBtn) {
-    console.log('Modal confirm button found, attaching listener');
     modalConfirmBtn.addEventListener('click', confirmModalOrder);
   } else {
     console.error('Modal confirm button not found!');
@@ -515,13 +505,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadTableOrders();
 });
-
-// Also try binding immediately
-const modalConfirmBtn = modal.querySelector('.modal-confirm-btn');
-if (modalConfirmBtn) {
-  console.log('Modal confirm button found immediately, attaching listener');
-  modalConfirmBtn.addEventListener('click', confirmModalOrder);
-}
 
 closeModalButton.addEventListener('click', closeItemModal);
 cartCloseButton.addEventListener('click', closeCartModal);

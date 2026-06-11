@@ -4,7 +4,20 @@ const path = require('path');
 
 const port = process.env.PORT || 3000;
 const serverFile = path.join(__dirname, 'server.js');
-const watchFiles = ['server.js', 'admin.js', 'script.js', 'style.css', 'admin.html', 'index.html'];
+const watchFiles = [
+  'server.js',
+  'admin.js',
+  'script.js',
+  'style.css',
+  'admin.html',
+  'index.html',
+  path.join('src', 'app.js'),
+  path.join('src', 'config', 'database.js'),
+  path.join('src', 'controllers'),
+  path.join('src', 'repositories'),
+  path.join('src', 'routes'),
+  path.join('src', 'services'),
+];
 let child = null;
 let restartPending = false;
 let debounceTimer = null;

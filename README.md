@@ -2,6 +2,17 @@
 
 This project includes a static frontend and a Node.js backend API for loading menu items from Neon and saving orders.
 
+## Backend structure
+
+The backend now follows a four-layer structure:
+
+- `routes` define the public HTTP endpoints
+- `controllers` adapt requests and responses
+- `services` hold validation and business flow
+- `repositories` talk to PostgreSQL
+
+The application boots from `server.js`, which initializes the database and loads the Express app from `src/app.js`.
+
 ## Setup
 
 1. Copy `.env.example` to `.env`

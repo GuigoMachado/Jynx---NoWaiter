@@ -2,11 +2,12 @@ const tablesGrid = document.getElementById('tablesGrid');
 const totalOrdersCount = document.getElementById('totalOrdersCount');
 const grandTotalValue = document.getElementById('grandTotalValue');
 const generalSummaryList = document.getElementById('generalSummaryList');
-const refreshTables = document.getElementById('refreshTables');
+const summarySearchInput = document.getElementById('summarySearchInput');
 const openKitchenBtn = document.getElementById('openKitchenBtn');
 const garconCallsList = document.getElementById('garconCallsList');
 
 const tableCount = 10;
+const SUMMARY_OPEN_DAYS_KEY = 'jynx-summary-open-days';
 const formatPrice = (value) => `R$ ${value.toFixed(2).replace('.', ',')}`;
 const formatDateLabel = (value) => {
   const date = new Date(value);
@@ -20,72 +21,308 @@ const formatTimeLabel = (value) => {
   return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 };
 
+const getDateKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'invalid-date';
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getTimestamp = (value) => {
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const normalizeText = (value) => String(value || '').toLowerCase().trim();
+
+const readOpenDayKeys = () => {
+  try {
+    const rawValue = window.localStorage.getItem(SUMMARY_OPEN_DAYS_KEY);
+    const parsed = rawValue ? JSON.parse(rawValue) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch (error) {
+    return new Set();
+  }
+};
+
+const saveOpenDayKeys = (openDayKeys) => {
+  try {
+    window.localStorage.setItem(SUMMARY_OPEN_DAYS_KEY, JSON.stringify(Array.from(openDayKeys)));
+  } catch (error) {
+    // Ignore storage failures and keep rendering normally.
+  }
+};
+
 const loadOrderSummary = async () => {
   try {
-    const response = await fetch('/api/order-history');
+    const response = await fetch('/api/order-history', { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`Falha ao carregar histórico de pedidos: ${response.status}`);
     }
 
     const rows = await response.json();
-    const groupedByDate = rows.reduce((groups, row) => {
-      const dateKey = formatDateLabel(row.created_at);
-      if (!groups[dateKey]) groups[dateKey] = [];
-      groups[dateKey].push(row);
+    const groupedBySession = rows.reduce((groups, row) => {
+      const tableKey = `Mesa ${row.table_number || '-'}`;
+      const closedAt = row.closed_at || row.created_at || row.id;
+      const groupKey = `${tableKey}__${closedAt}`;
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          tableKey,
+          closedAt,
+          firstOrderAt: row.created_at || closedAt,
+          rows: [],
+        };
+      }
+      groups[groupKey].rows.push(row);
+      if (row.created_at && getTimestamp(row.created_at) < getTimestamp(groups[groupKey].firstOrderAt)) {
+        groups[groupKey].firstOrderAt = row.created_at;
+      }
       return groups;
     }, {});
 
-    const sortedDates = Object.keys(groupedByDate).sort((left, right) => {
-      const leftDate = new Date(groupedByDate[left][0]?.created_at || 0);
-      const rightDate = new Date(groupedByDate[right][0]?.created_at || 0);
-      return leftDate - rightDate;
-    });
+    const sortedSessions = Object.values(groupedBySession)
+      .map((group) => ({
+        tableKey: group.tableKey,
+        closedAt: group.closedAt,
+        firstOrderAt: group.firstOrderAt,
+        tableRows: group.rows,
+        historyIds: group.rows.map((row) => row.id),
+        sessionTotal: group.rows.reduce((sum, row) => sum + Number(row.total_price || 0), 0),
+        latestAt: getTimestamp(group.closedAt),
+        dayKey: getDateKey(group.firstOrderAt || group.closedAt),
+        dayStamp: group.firstOrderAt || group.closedAt,
+      }))
+      .sort((left, right) => right.latestAt - left.latestAt || getTimestamp(right.firstOrderAt) - getTimestamp(left.firstOrderAt) || Number(right.tableKey.replace('Mesa ', '')) - Number(left.tableKey.replace('Mesa ', '')));
+
+    const groupedByDay = sortedSessions.reduce((groups, session) => {
+      if (!groups[session.dayKey]) {
+        groups[session.dayKey] = {
+          dayKey: session.dayKey,
+          dayStamp: session.dayStamp,
+          latestAt: session.latestAt,
+          sessions: [],
+        };
+      }
+
+      groups[session.dayKey].sessions.push(session);
+      if (session.latestAt > groups[session.dayKey].latestAt) {
+        groups[session.dayKey].latestAt = session.latestAt;
+        groups[session.dayKey].dayStamp = session.dayStamp;
+      }
+
+      return groups;
+    }, {});
+
+    const sortedDays = Object.values(groupedByDay)
+      .map((day) => ({
+        ...day,
+        dayLabel: formatDateLabel(day.dayStamp || day.latestAt),
+        dayTotal: day.sessions.reduce((sum, session) => sum + session.sessionTotal, 0),
+        sessions: day.sessions.slice().sort((left, right) => right.latestAt - left.latestAt || getTimestamp(right.firstOrderAt) - getTimestamp(left.firstOrderAt) || Number(right.tableKey.replace('Mesa ', '')) - Number(left.tableKey.replace('Mesa ', ''))),
+      }))
+      .sort((left, right) => right.latestAt - left.latestAt || right.dayKey.localeCompare(left.dayKey));
+
+    const searchQuery = normalizeText(summarySearchInput?.value);
+    const savedOpenDayKeys = readOpenDayKeys();
+    const filteredDays = searchQuery
+      ? sortedDays
+          .map((day) => {
+            const matchingSessions = day.sessions.filter((session) => {
+              const sessionText = normalizeText([
+                day.dayLabel,
+                day.dayKey,
+                session.tableKey,
+                formatPrice(session.sessionTotal),
+                session.firstOrderAt,
+                session.closedAt,
+                ...session.tableRows.flatMap((row) => [row.item_name, row.item_id, row.notes, row.created_at, row.total_price]),
+              ].join(' '));
+
+              return sessionText.includes(searchQuery);
+            });
+
+            return matchingSessions.length
+              ? {
+                  ...day,
+                  sessions: matchingSessions,
+                }
+              : null;
+          })
+          .filter(Boolean)
+      : sortedDays;
 
     let total = 0;
     const fragment = document.createDocumentFragment();
 
-    sortedDates.forEach((dateKey) => {
-      const orders = groupedByDate[dateKey].sort((a, b) => new Date(a.created_at) - new Date(b.created_at) || Number(a.id) - Number(b.id));
-      const dateBlock = document.createElement('section');
-      dateBlock.className = 'summary-date-group';
+    filteredDays.forEach((day) => {
+      const dayBlock = document.createElement('section');
+      dayBlock.className = 'summary-day-group';
 
-      const header = document.createElement('div');
-      header.className = 'summary-date-header';
+      const shouldOpen = searchQuery ? true : savedOpenDayKeys.has(day.dayKey);
+      if (shouldOpen) {
+        dayBlock.classList.add('is-open');
+      }
+
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'summary-day-header';
+      header.setAttribute('aria-expanded', String(shouldOpen));
+
+      const content = document.createElement('div');
+      content.className = 'summary-day-content';
+      content.hidden = !shouldOpen;
+
       header.innerHTML = `
-        <strong>${dateKey}</strong>
-        <span>${orders.length} pedido${orders.length === 1 ? '' : 's'}</span>
+        <div class="summary-day-title">
+          <strong>${day.dayLabel}</strong>
+          <span>${day.sessions.length} comanda${day.sessions.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="summary-day-meta">
+          <span>${shouldOpen ? 'Toque para fechar' : 'Toque para abrir'}</span>
+          <strong>${formatPrice(day.dayTotal)}</strong>
+        </div>
+        <span class="summary-day-chevron" aria-hidden="true">${shouldOpen ? '▾' : '▸'}</span>
       `;
 
-      const list = document.createElement('div');
-      list.className = 'summary-order-list';
+      header.addEventListener('click', () => {
+        const isOpen = !content.hidden;
+        content.hidden = isOpen;
+        const nextIsOpen = !isOpen;
+        header.setAttribute('aria-expanded', String(nextIsOpen));
+        dayBlock.classList.toggle('is-open', nextIsOpen);
+        const metaLabel = header.querySelector('.summary-day-meta span');
+        if (metaLabel) {
+          metaLabel.textContent = nextIsOpen ? 'Toque para fechar' : 'Toque para abrir';
+        }
+        const chevron = header.querySelector('.summary-day-chevron');
+        if (chevron) {
+          chevron.textContent = nextIsOpen ? '▾' : '▸';
+        }
 
-      orders.forEach((row) => {
-        const item = document.createElement('article');
-        item.className = 'summary-order-item';
-        const notes = row.notes && row.notes !== '-' ? row.notes : 'Sem observações';
-        item.innerHTML = `
-          <div class="summary-order-main">
-            <strong>${formatTimeLabel(row.created_at)} - Mesa ${row.table_number}</strong>
-            <span>${row.item_name || row.item_id} x${row.quantity}</span>
-          </div>
-          <div class="summary-order-meta">
-            <span>${notes}</span>
-            <strong>${formatPrice(Number(row.total_price || 0))}</strong>
-          </div>
-        `;
-        list.appendChild(item);
-        total += Number(row.total_price || 0);
+        const openDayKeys = readOpenDayKeys();
+        if (nextIsOpen) {
+          openDayKeys.add(day.dayKey);
+        } else {
+          openDayKeys.delete(day.dayKey);
+        }
+        saveOpenDayKeys(openDayKeys);
       });
 
-      dateBlock.appendChild(header);
-      dateBlock.appendChild(list);
-      fragment.appendChild(dateBlock);
+      day.sessions.forEach(({ tableKey, tableRows, sessionTotal, historyIds }) => {
+        const orders = tableRows.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at) || Number(a.id) - Number(b.id));
+        const tableBlock = document.createElement('section');
+        tableBlock.className = 'summary-table-group';
+
+        const sessionHeader = document.createElement('div');
+        sessionHeader.className = 'summary-table-header';
+        const firstOrderStamp = orders[0]?.created_at || tableRows[0]?.created_at;
+        const closeStamp = orders[orders.length - 1]?.closed_at || tableRows[0]?.closed_at || firstOrderStamp;
+        const firstOrderTime = firstOrderStamp ? formatTimeLabel(firstOrderStamp) : '--:--';
+        const closeTime = closeStamp ? formatTimeLabel(closeStamp) : '--:--';
+        const tableDay = firstOrderStamp ? formatDateLabel(firstOrderStamp) : 'Data indisponível';
+        sessionHeader.innerHTML = `
+          <div class="summary-table-title">
+            <strong>${tableKey}</strong>
+            <span>${orders.length} item${orders.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="summary-table-meta">
+            <span>Total da comanda</span>
+            <strong>${formatPrice(sessionTotal)}</strong>
+            <span>${tableDay}</span>
+            <strong>${firstOrderTime} - ${closeTime}</strong>
+          </div>
+        `;
+
+        const list = document.createElement('div');
+        list.className = 'summary-table-items';
+
+        orders.forEach((row) => {
+          const item = document.createElement('div');
+          item.className = 'summary-table-item';
+          const notes = row.notes && row.notes !== '-' ? row.notes : 'Sem observações';
+          const orderTime = row.created_at ? formatTimeLabel(row.created_at) : '--:--';
+          item.innerHTML = `
+            <div class="summary-table-item-main">
+              <div class="summary-table-item-top">
+                <strong>${row.item_name || row.item_id} x${row.quantity}</strong>
+                <span class="summary-table-item-time">${orderTime}</span>
+              </div>
+              <span>${notes}</span>
+            </div>
+            <strong class="summary-table-item-price">${formatPrice(Number(row.total_price || 0))}</strong>
+          `;
+          list.appendChild(item);
+          total += Number(row.total_price || 0);
+        });
+
+        const footer = document.createElement('div');
+        footer.className = 'summary-table-footer';
+        footer.innerHTML = `
+          <button type="button" class="summary-table-delete-btn" data-history-ids="${historyIds.join(',')}">Excluir</button>
+        `;
+
+        footer.querySelector('.summary-table-delete-btn').addEventListener('click', async (event) => {
+          event.stopPropagation();
+          const deleteButton = event.currentTarget;
+          const confirmed = confirm(`Deseja excluir esta comanda da ${tableKey}?`);
+          if (!confirmed) {
+            return;
+          }
+
+          const historyIds = deleteButton.dataset.historyIds;
+          deleteButton.disabled = true;
+          deleteButton.textContent = 'Excluindo...';
+
+          try {
+            const response = await fetch('/api/order-history/session-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ historyIds }),
+            });
+
+            const responseData = await response.json().catch(() => null);
+            if (!response.ok || !responseData?.deleted) {
+              const errorMessage = responseData?.error || responseData?.detail || `HTTP ${response.status}`;
+              throw new Error(`Falha ao excluir resumo: ${errorMessage}`);
+            }
+
+            tableBlock.remove();
+            if (!dayBlock.querySelector('.summary-table-group')) {
+              dayBlock.remove();
+            }
+
+            await loadOrderSummary();
+          } catch (error) {
+            console.error(error);
+            alert('Erro ao excluir a comanda do resumo');
+          } finally {
+            deleteButton.disabled = false;
+            deleteButton.textContent = 'Excluir';
+          }
+        });
+
+        tableBlock.appendChild(sessionHeader);
+        tableBlock.appendChild(list);
+        tableBlock.appendChild(footer);
+        content.appendChild(tableBlock);
+      });
+
+      dayBlock.appendChild(header);
+      dayBlock.appendChild(content);
+      fragment.appendChild(dayBlock);
     });
 
     totalOrdersCount.textContent = `${rows.length} pedido${rows.length === 1 ? '' : 's'}`;
     grandTotalValue.textContent = `Total: ${formatPrice(total)}`;
     generalSummaryList.innerHTML = '';
     generalSummaryList.appendChild(fragment);
+
+    if (summarySearchInput && searchQuery && filteredDays.length === 0) {
+      totalOrdersCount.textContent = 'Nenhum resultado encontrado';
+      grandTotalValue.textContent = `Total: ${formatPrice(0)}`;
+    }
   } catch (error) {
     console.error(error);
     totalOrdersCount.textContent = 'Falha ao carregar pedidos';
@@ -95,6 +332,12 @@ const loadOrderSummary = async () => {
     }
   }
 };
+
+if (summarySearchInput) {
+  summarySearchInput.addEventListener('input', () => {
+    loadOrderSummary();
+  });
+}
 
 const renderTableButtons = () => {
   tablesGrid.innerHTML = '';
@@ -207,7 +450,7 @@ const finalizeTableOrders = async () => {
     await loadWaiterCalls();
     
     // Clear the orders from the table
-    const deleteRes = await fetch(`/api/orders?table_number=${activeTableNumber}`, {
+    await fetch(`/api/orders?table_number=${activeTableNumber}`, {
       method: 'DELETE'
     });
     
@@ -240,8 +483,7 @@ const deleteOrderItem = async (orderId) => {
       throw new Error(errorData.error || 'Falha ao cancelar item');
     }
 
-    const data = await res.json();
-    console.log('Item deleted successfully:', data);
+    await res.json();
 
     // Reload the table orders
     if (activeTableNumber) {
@@ -371,7 +613,7 @@ const scheduleAttendedCallRemoval = (id) => {
   const timerId = window.setTimeout(() => {
     attendedCallRemovalTimers.delete(id);
     removeWaiterCall(id);
-  }, 4000);
+  }, 500);
 
   attendedCallRemovalTimers.set(id, timerId);
 };
@@ -430,8 +672,6 @@ const loadWaiterCalls = async () => {
     console.error(err);
   }
 };
-
-refreshTables.addEventListener('click', () => { loadOrderSummary(); loadWaiterCalls(); });
 
 renderTableButtons();
 loadOrderSummary();
